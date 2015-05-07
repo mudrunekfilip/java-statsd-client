@@ -22,9 +22,10 @@ import org.junit.Test;
 public final class NonBlockingStatsDClientTest {
 
     private static final int STATSD_SERVER_PORT = 17254;
+    public static final int PACKET_SIZE_BYTES = 1500;
 
-    private final NonBlockingStatsDClient client = new NonBlockingStatsDClient("my.prefix", "localhost", STATSD_SERVER_PORT);
-    private final DummyStatsDServer server = new DummyStatsDServer(STATSD_SERVER_PORT);
+    private final NonBlockingStatsDClient client = new NonBlockingStatsDClient("my.prefix", "localhost", STATSD_SERVER_PORT, PACKET_SIZE_BYTES);
+    private final DummyStatsDServer server = new DummyStatsDServer(STATSD_SERVER_PORT, NonBlockingStatsDClient.STATS_D_ENCODING, PACKET_SIZE_BYTES);
 
     @After
     public void stop() throws Exception {
@@ -101,14 +102,13 @@ public final class NonBlockingStatsDClientTest {
         client.recordGaugeValue("mygauge", -423L);
         server.waitForMessage();
 
-        assertThat(server.messagesReceived(), contains("my.prefix.mygauge:0|g\nmy.prefix.mygauge:-423|g"));
+        assertThat(server.messagesReceived(), contains("my.prefix.mygauge:0|g", "my.prefix.mygauge:-423|g"));
     }
 
     @Test(timeout=5000L) public void
     sends_gauge_positive_delta_to_statsd() throws Exception {
         client.recordGaugeDelta("mygauge", 423L);
         server.waitForMessage();
-
         assertThat(server.messagesReceived(), contains("my.prefix.mygauge:+423|g"));
     }
 
@@ -181,7 +181,7 @@ public final class NonBlockingStatsDClientTest {
 
     @Test(timeout=5000L) public void
     allows_empty_prefix() {
-        final NonBlockingStatsDClient emptyPrefixClient = new NonBlockingStatsDClient(" ", "localhost", STATSD_SERVER_PORT);
+        final NonBlockingStatsDClient emptyPrefixClient = new NonBlockingStatsDClient(" ", "localhost", STATSD_SERVER_PORT, PACKET_SIZE_BYTES);
         try {
             emptyPrefixClient.count("mycount", 24L);
             server.waitForMessage();
@@ -193,7 +193,7 @@ public final class NonBlockingStatsDClientTest {
 
     @Test(timeout=5000L) public void
     allows_null_prefix() {
-        final NonBlockingStatsDClient nullPrefixClient = new NonBlockingStatsDClient(null, "localhost", STATSD_SERVER_PORT);
+        final NonBlockingStatsDClient nullPrefixClient = new NonBlockingStatsDClient(null, "localhost", STATSD_SERVER_PORT, PACKET_SIZE_BYTES);
         try {
             nullPrefixClient.count("mycount", 24L);
             server.waitForMessage();
@@ -201,43 +201,5 @@ public final class NonBlockingStatsDClientTest {
             nullPrefixClient.stop();
         }
         assertThat(server.messagesReceived(), contains(startsWith("mycount:")));
-    }
-
-    private static final class DummyStatsDServer {
-        private final List<String> messagesReceived = new ArrayList<String>();
-        private final DatagramSocket server;
-
-        public DummyStatsDServer(int port) {
-            try {
-                server = new DatagramSocket(port);
-            } catch (SocketException e) {
-                throw new IllegalStateException(e);
-            }
-            new Thread(new Runnable() {
-                @Override public void run() {
-                    try {
-                        final DatagramPacket packet = new DatagramPacket(new byte[256], 256);
-                        server.receive(packet);
-                        messagesReceived.add(new String(packet.getData(), Charset.forName("UTF-8")).trim());
-                    } catch (Exception e) { }
-                }
-            }).start();
-        }
-
-        public void stop() {
-            server.close();
-        }
-
-        public void waitForMessage() {
-            while (messagesReceived.isEmpty()) {
-                try {
-                    Thread.sleep(50L);
-                } catch (InterruptedException e) {}
-            }
-        }
-
-        public List<String> messagesReceived() {
-            return new ArrayList<String>(messagesReceived);
-        }
     }
 }

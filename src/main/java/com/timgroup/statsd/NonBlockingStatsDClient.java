@@ -32,7 +32,7 @@ import java.util.Locale;
  */
 public final class NonBlockingStatsDClient extends ConvenienceMethodProvidingStatsDClient {
 
-    private static final Charset STATS_D_ENCODING = Charset.forName("UTF-8");
+    public static final Charset STATS_D_ENCODING = Charset.forName("UTF-8");
 
     private static final StatsDClientErrorHandler NO_OP_HANDLER = new StatsDClientErrorHandler() {
         @Override public void handle(Exception e) { /* No-op */ }
@@ -57,11 +57,18 @@ public final class NonBlockingStatsDClient extends ConvenienceMethodProvidingSta
      *     the host name of the targeted StatsD server
      * @param port
      *     the port of the targeted StatsD server
+     * @param packetSize
+     *     max size of packets to be sent by the client in bytes. Recommended sizes:
+     *     <ul>
+     *         <li>Fast Ethernet (1432) - This is most likely for Intranets.</li>
+     *         <li>Gigabit Ethernet (8932) - Jumbo frames can make use of this feature much more efficient.</li>
+     *         <li>Commodity Internet (512) - If you are routing over the internet a value in this range will be reasonable. You might be able to go higher, but you are at the mercy of all the hops in your route.</li>
+     *     </ul>
      * @throws StatsDClientException
      *     if the client could not be started
      */
-    public NonBlockingStatsDClient(String prefix, String hostname, int port) throws StatsDClientException {
-        this(prefix, hostname, port, NO_OP_HANDLER);
+    public NonBlockingStatsDClient(String prefix, String hostname, int port, int packetSize) throws StatsDClientException {
+        this(prefix, hostname, port,packetSize, NO_OP_HANDLER);
     }
 
     /**
@@ -81,16 +88,23 @@ public final class NonBlockingStatsDClient extends ConvenienceMethodProvidingSta
      *     the host name of the targeted StatsD server
      * @param port
      *     the port of the targeted StatsD server
+     * @param packetSize
+     *     max size of packets to be sent by the client in bytes. Recommended sizes:
+     *     <ul>
+     *         <li>Fast Ethernet (1432) - This is most likely for Intranets.</li>
+     *         <li>Gigabit Ethernet (8932) - Jumbo frames can make use of this feature much more efficient.</li>
+     *         <li>Commodity Internet (512) - If you are routing over the internet a value in this range will be reasonable. You might be able to go higher, but you are at the mercy of all the hops in your route.</li>
+     *     </ul>
      * @param errorHandler
      *     handler to use when an exception occurs during usage
      * @throws StatsDClientException
      *     if the client could not be started
      */
-    public NonBlockingStatsDClient(String prefix, String hostname, int port, StatsDClientErrorHandler errorHandler) throws StatsDClientException {
+    public NonBlockingStatsDClient(String prefix, String hostname, int port, int packetSize, StatsDClientErrorHandler errorHandler) throws StatsDClientException {
         this.prefix = (prefix == null || prefix.trim().isEmpty()) ? "" : (prefix.trim() + ".");
 
         try {
-            this.sender = new NonBlockingUdpSender(hostname, port, STATS_D_ENCODING, errorHandler);
+            this.sender = new NonBlockingUdpSender(hostname, port, packetSize, STATS_D_ENCODING, errorHandler);
         } catch (Exception e) {
             throw new StatsDClientException("Failed to start StatsD client", e);
         }

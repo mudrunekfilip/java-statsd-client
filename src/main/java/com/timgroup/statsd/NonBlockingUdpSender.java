@@ -5,32 +5,41 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.charset.Charset;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
-public final class NonBlockingUdpSender {
+
+public class NonBlockingUdpSender {
+
     private final Charset encoding;
-    private final DatagramChannel clientSocket;
+    private final DatagramChannel clientChannel;
+    private final InetSocketAddress address;
     private final ExecutorService executor;
     private StatsDClientErrorHandler handler;
+    private final BlockingQueue<String> queue;
+    private int packetSizeBytes;
 
-    public NonBlockingUdpSender(String hostname, int port, Charset encoding, StatsDClientErrorHandler handler) throws IOException {
+    public NonBlockingUdpSender(String hostname, int port, int packetSizeBytes, Charset encoding, StatsDClientErrorHandler handler) throws IOException {
+        this.queue = new LinkedBlockingQueue<String>();
         this.encoding = encoding;
         this.handler = handler;
-        this.clientSocket = DatagramChannel.open();
-        this.clientSocket.connect(new InetSocketAddress(hostname, port));
+        this.clientChannel = DatagramChannel.open();
+        this.address = new InetSocketAddress(hostname, port);
+        this.clientChannel.connect(address);
+        this.packetSizeBytes = packetSizeBytes;
 
         this.executor = Executors.newSingleThreadExecutor(new ThreadFactory() {
             final ThreadFactory delegate = Executors.defaultThreadFactory();
-            @Override public Thread newThread(Runnable r) {
-                Thread result = delegate.newThread(r);
+
+            @Override
+            public Thread newThread(Runnable runnable) {
+                Thread result = delegate.newThread(runnable);
                 result.setName("StatsD-" + result.getName());
                 result.setDaemon(true);
                 return result;
             }
         });
+
+        this.executor.submit(new QueueConsumer());
     }
 
     public void stop() {
@@ -42,9 +51,9 @@ public final class NonBlockingUdpSender {
             handler.handle(e);
         }
         finally {
-            if (clientSocket != null) {
+            if (clientChannel != null) {
                 try {
-                    clientSocket.close();
+                    clientChannel.close();
                 }
                 catch (Exception e) {
                     handler.handle(e);
@@ -54,24 +63,54 @@ public final class NonBlockingUdpSender {
     }
 
     public void send(final String message) {
-        try {
-            executor.execute(new Runnable() {
-                @Override public void run() {
-                    blockingSend(message);
-                }
-            });
-        }
-        catch (Exception e) {
-            handler.handle(e);
-        }
+        queue.offer(message);
     }
 
-    private void blockingSend(String message) {
-        try {
-            final byte[] sendData = message.getBytes(encoding);
-            clientSocket.write(ByteBuffer.wrap(sendData));
-        } catch (Exception e) {
-            handler.handle(e);
+
+    private class QueueConsumer implements Runnable {
+        private final ByteBuffer sendBuffer = ByteBuffer.allocate(packetSizeBytes);
+
+        @Override public void run() {
+            while(!executor.isShutdown()) {
+                try {
+                    String message = queue.poll(1, TimeUnit.SECONDS);
+                    if(message != null) {
+                        byte[] data = message.getBytes();
+                        if(sendBuffer.remaining() < (data.length + 1)) {
+                            blockingSend();
+                        }
+                        if(sendBuffer.position() > 0) {
+                            sendBuffer.put( (byte) '\n');
+                        }
+                        sendBuffer.put(data);
+                        if(queue.peek() == null) {
+                            blockingSend();
+                        }
+                    }
+                } catch (Exception e) {
+                    handler.handle(e);
+                }
+            }
+        }
+
+        private void blockingSend() throws IOException {
+            int sizeOfBuffer = sendBuffer.position();
+            sendBuffer.flip();
+            int sentBytes = clientChannel.send(sendBuffer, address);
+            sendBuffer.limit(sendBuffer.capacity());
+            sendBuffer.rewind();
+
+            if (sizeOfBuffer != sentBytes) {
+                handler.handle(
+                        new IOException(
+                                String.format(
+                                        "Could not send entirely stat %s to host %s:%d. Only sent %d bytes out of %d bytes",
+                                        sendBuffer.toString(),
+                                        address.getHostName(),
+                                        address.getPort(),
+                                        sentBytes,
+                                        sizeOfBuffer)));
+            }
         }
     }
 }
