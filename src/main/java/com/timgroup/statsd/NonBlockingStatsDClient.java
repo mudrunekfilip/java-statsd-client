@@ -50,6 +50,29 @@ public final class NonBlockingStatsDClient extends ConvenienceMethodProvidingSta
      * be established. Once a client has been instantiated in this way, all
      * exceptions thrown during subsequent usage are consumed, guaranteeing
      * that failures in metrics will not affect normal code execution.
+     *
+     * @param prefix
+     *     the prefix to apply to keys sent via this client (can be null or empty for no prefix)
+     * @param hostname
+     *     the host name of the targeted StatsD server
+     * @param port
+     *     the port of the targeted StatsD server
+     * @throws StatsDClientException
+     *     if the client could not be started
+     */
+    public NonBlockingStatsDClient(String prefix, String hostname, int port) throws StatsDClientException {
+        this(prefix, hostname, port, 0 , NO_OP_HANDLER);
+    }
+
+    /**
+     * Create a new StatsD client communicating with a StatsD instance on the
+     * specified host and port. All messages send via this client will have
+     * their keys prefixed with the specified string. The new client will
+     * attempt to open a connection to the StatsD server immediately upon
+     * instantiation, and may throw an exception if that a connection cannot
+     * be established. Once a client has been instantiated in this way, all
+     * exceptions thrown during subsequent usage are consumed, guaranteeing
+     * that failures in metrics will not affect normal code execution.
      * 
      * @param prefix
      *     the prefix to apply to keys sent via this client (can be null or empty for no prefix)
@@ -89,7 +112,9 @@ public final class NonBlockingStatsDClient extends ConvenienceMethodProvidingSta
      * @param port
      *     the port of the targeted StatsD server
      * @param packetSize
-     *     max size of packets to be sent by the client in bytes. Recommended sizes:
+     *     max size of packets to be sent by the client in bytes.
+     *     To disable multi-metrics packing of messages, use 0.
+     *     Recommended sizes:
      *     <ul>
      *         <li>Fast Ethernet (1432) - This is most likely for Intranets.</li>
      *         <li>Gigabit Ethernet (8932) - Jumbo frames can make use of this feature much more efficient.</li>

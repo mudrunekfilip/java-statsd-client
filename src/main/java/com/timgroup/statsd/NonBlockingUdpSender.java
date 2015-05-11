@@ -39,7 +39,8 @@ public class NonBlockingUdpSender {
             }
         });
 
-        this.executor.submit(new QueueConsumer());
+        boolean useMultimetrics = packetSizeBytes != 0;
+        this.executor.submit(new QueueConsumer(useMultimetrics));
     }
 
     public void stop() {
@@ -68,7 +69,17 @@ public class NonBlockingUdpSender {
 
 
     private class QueueConsumer implements Runnable {
-        private final ByteBuffer sendBuffer = ByteBuffer.allocate(packetSizeBytes);
+        private final ByteBuffer sendBuffer;
+        private final boolean useMultimetrics;
+
+        public QueueConsumer(boolean useMultimetrics){
+            this.useMultimetrics = useMultimetrics;
+            if(useMultimetrics){
+                sendBuffer = ByteBuffer.allocate(packetSizeBytes);
+            }else{
+                sendBuffer = ByteBuffer.allocate(50);
+            }
+        }
 
         @Override public void run() {
             while(!executor.isShutdown()) {
@@ -76,14 +87,21 @@ public class NonBlockingUdpSender {
                     String message = queue.poll(1, TimeUnit.SECONDS);
                     if(message != null) {
                         byte[] data = message.getBytes();
-                        if(sendBuffer.remaining() < (data.length + 1)) {
-                            blockingSend();
-                        }
-                        if(sendBuffer.position() > 0) {
-                            sendBuffer.put( (byte) '\n');
-                        }
-                        sendBuffer.put(data);
-                        if(queue.peek() == null) {
+
+                        if(useMultimetrics) {
+                            if (sendBuffer.remaining() < (data.length + 1)) {
+                                blockingSend();
+                            }
+                            if (sendBuffer.position() > 0) {
+                                sendBuffer.put((byte) '\n');
+                            }
+                            sendBuffer.put(data);
+                            if (queue.peek() == null) {
+                                blockingSend();
+                            }
+                        }else{
+                            sendBuffer.put(data);
+                            System.out.println("sending "+data.length+" bytes of data");
                             blockingSend();
                         }
                     }
