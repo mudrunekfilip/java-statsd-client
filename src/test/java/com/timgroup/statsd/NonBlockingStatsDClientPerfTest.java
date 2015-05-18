@@ -30,7 +30,7 @@ public final class NonBlockingStatsDClientPerfTest {
     @Test(timeout=30000)
     public void perf_test() throws Exception {
 
-        int testSize = 10000;
+        int testSize = 20000;
         for(int i = 0; i < testSize; ++i) {
             executor.submit(new Runnable() {
                 public void run() {

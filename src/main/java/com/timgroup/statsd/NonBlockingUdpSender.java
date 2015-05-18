@@ -101,7 +101,6 @@ public class NonBlockingUdpSender {
                             }
                         }else{
                             sendBuffer.put(data);
-                            System.out.println("sending "+data.length+" bytes of data");
                             blockingSend();
                         }
                     }
