@@ -6,12 +6,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.startsWith;
 
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.SocketException;
-import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -24,13 +18,24 @@ public final class NonBlockingStatsDClientTest {
     private static final int STATSD_SERVER_PORT = 17254;
     public static final int PACKET_SIZE_BYTES = 1500;
 
-    private final NonBlockingStatsDClient client = new NonBlockingStatsDClient("my.prefix", "localhost", STATSD_SERVER_PORT, PACKET_SIZE_BYTES);
+    private final NonBlockingStatsDClient client = new NonBlockingStatsDClient("my.prefix", "localhost", STATSD_SERVER_PORT, PACKET_SIZE_BYTES, new DummyErrorHandler());
     private final DummyStatsDServer server = new DummyStatsDServer(STATSD_SERVER_PORT, NonBlockingStatsDClient.STATS_D_ENCODING, PACKET_SIZE_BYTES);
 
     @After
     public void stop() throws Exception {
         client.stop();
         server.stop();
+    }
+
+    @Test(timeout = 5000L) public void
+    sends_long_metric_to_statsd() throws Exception{
+        String aspect = "mytime"
+                +"testtesttesttesttesttesttest"
+                +"testtesttesttesttesttesttest";
+        client.recordExecutionTime(aspect, 123L);
+        server.waitForMessage();
+
+        assertThat(server.messagesReceived(), contains("my.prefix."+aspect+":123|ms"));
     }
 
     @Test(timeout=5000L) public void

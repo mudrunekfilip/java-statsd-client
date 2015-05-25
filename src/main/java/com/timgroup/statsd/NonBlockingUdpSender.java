@@ -47,16 +47,13 @@ public class NonBlockingUdpSender {
         try {
             executor.shutdown();
             executor.awaitTermination(30, TimeUnit.SECONDS);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             handler.handle(e);
-        }
-        finally {
+        } finally {
             if (clientChannel != null) {
                 try {
                     clientChannel.close();
-                }
-                catch (Exception e) {
+                } catch (Exception e) {
                     handler.handle(e);
                 }
             }
@@ -72,23 +69,33 @@ public class NonBlockingUdpSender {
         private final ByteBuffer sendBuffer;
         private final boolean useMultimetrics;
 
-        public QueueConsumer(boolean useMultimetrics){
+        public QueueConsumer(boolean useMultimetrics) {
             this.useMultimetrics = useMultimetrics;
-            if(useMultimetrics){
+            if (useMultimetrics) {
                 sendBuffer = ByteBuffer.allocate(packetSizeBytes);
-            }else{
+            } else {
                 sendBuffer = ByteBuffer.allocate(50);
             }
         }
 
         @Override public void run() {
-            while(!executor.isShutdown()) {
+            while (!executor.isShutdown()) {
                 try {
                     String message = queue.poll(1, TimeUnit.SECONDS);
-                    if(message != null) {
+                    if (message != null) {
                         byte[] data = message.getBytes();
 
-                        if(useMultimetrics) {
+                        if (data.length > sendBuffer.capacity()){
+                            handler.handle(
+                                    new IOException(
+                                            String.format(
+                                                    "StatsD metric '%s' could not be sent. Sending buffer's capacity exceeded (%d bytes)",
+                                                    message,
+                                                    sendBuffer.capacity())));
+                            continue;
+                        }
+
+                        if (useMultimetrics) {
                             if (sendBuffer.remaining() < (data.length + 1)) {
                                 blockingSend();
                             }
@@ -99,7 +106,7 @@ public class NonBlockingUdpSender {
                             if (queue.peek() == null) {
                                 blockingSend();
                             }
-                        }else{
+                        } else {
                             sendBuffer.put(data);
                             blockingSend();
                         }
